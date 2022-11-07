@@ -1,0 +1,262 @@
+---
+  - name: Deploy a laravel application
+    hosts: host
+    become: yes
+
+    vars:
+         git_url: 'https://github.com/Oyoyo1/exam.git'
+         git_key: 20.208.129.121
+
+    tasks:
+       - name: Install latest version of Apache
+         apt: name=apache2 update_cache=yes state=latest
+       - name: Get the status of apache2 service
+         command: systemctl status apache2
+       - name: Install some needed software
+         tags: 
+            - php
+            - ubuntu
+         apt:
+           name: 
+              - software-properties-common
+              - gnupg-agent
+              - git
+       - name: Add repositories
+         tags:
+             - php
+             - ubuntu
+         apt_repository: repo='ppa:ondrej/php' state=present
+       - name: updating the repo
+         tags:
+            - php
+            - ubuntu
+         apt: update_cache=yes 
+       - name: install php8.1 with CLI
+         tags: 
+            - php
+            - ubuntu
+            - foo
+         apt:
+           name:
+              - php8.1-common
+              - php8.1-cli
+              - php8.1-dev
+              - php8.1-zip 
+              - php8.1-curl 
+              - php8.1-mbstring 
+              - php8.1-mysql 
+              - php8.1-gd 
+              - php8.1-xml
+              - php8.1-fpm  
+              - libapache2-mod-php8.1 
+           state: present
+       - name: Download Composer Installer
+         tags: 
+            - composer
+            - ubuntu
+         get_url:
+              url: https://getcomposer.org/installer
+              dest: /tmp/composer
+         become: yes
+       - name: install composer
+         tags:
+             - composer
+             - ubuntu
+         shell: php /tmp/composer --install-dir=/usr/local/bin 
+         become: yes
+       - name: rename composer executable
+         tags:
+            - composer
+            - ubuntu
+            - des
+         shell: mv /usr/local/bin/composer.phar /usr/local/bin/composer
+         become: yes
+       - name: set permissions for composer file
+         tags:
+            - composer
+            - ubuntu
+            - perm
+         file:
+            path: /usr/local/bin/composer
+            mode: a+x
+            state: file
+         become: yes  
+       - name: installing mysql and dependencies
+         tags:
+            - mysql
+            - ubuntu
+            - ins
+         package:
+          name:  "{{item}}"
+          state: present
+          update_cache: yes
+         loop:
+           - mysql-server
+           - mysql-client
+           - python3-mysqldb
+           - libmysqlclient-dev
+         become: yes              
+       - name: start and enable mysql service
+         tags:
+            - mysql
+            - ubuntu
+            - serv
+         service:
+           name: mysql
+           state: started
+           enabled: yes
+       - name: creating mysql user (medium_post)
+         tags:
+            - mysql
+            - ubuntu
+            - user
+         mysql_user:
+           name: "{{db_user}}"
+           password: "{{db_pass}}"
+           priv: '*.*:ALL'
+           host: '%'
+           state: present 
+       - name: creating medium_db
+         tags:
+            - mysql
+            - ubuntu
+            - create
+         mysql_db:
+           name: "{{db_name}}"
+           state: present
+       - name: Enable remote login to mysql
+         tags:
+            - mysql
+            - ubuntu
+            - login
+         lineinfile:
+            path: /etc/mysql/mysql.conf.d/mysqld.cnf
+            regexp: '^bind-address'
+            line: 'bind-address = 0.0.0.0'
+            backup: yes
+         notify:
+            - Restart mysql
+       - name: clone laravel repo
+         tags:
+            - laravel
+            - ubuntu
+         git:
+           repo: https://github.com/oxblixxx/laravel-realworld-example-app.git
+           dest: /var/www/destiny
+           clone: yes
+           update: no
+    
+       - name: create document root for domain configured in host
+         tags:
+            - host       
+            - ubuntu
+            - toot
+         file:
+           path: "/var/www/destiny"
+           state: directory
+           owner: www-data
+           group: www-data
+           mode: '0755'
+       - name: set permissions for laravel storage folder
+         tags:
+            - storage
+            - ubuntu
+            - peeps
+         file:
+           path: /var/www/destiny/storage
+           state: directory
+           recurse: yes
+           mode: '0755'
+         become: yes
+       
+       - name: install laravel dependencies
+         tags:
+            - ubuntu
+            - dep
+         shell: composer install --no-interaction
+         args:
+           chdir: /var/www/destiny
+       - name: copy env file
+         tags:
+            - ubuntu
+            - enn
+         copy:
+           src: /var/www/destiny/.env.example
+           remote_src: yes
+           dest: /var/www/destiny/.env
+           owner: www-data
+           group: www-data
+           mode: '0644'
+         become: yes
+       - name: copy apache config
+         tags: 
+            - ubuntu
+            - cop
+         copy:
+           src: box/destiny.conf
+           dest: /etc/apache2/sites-available/destiny.conf
+       - name: Enable the new config
+         tags:
+           - ubuntu
+           - conf
+         command: a2ensite destiny.conf
+         notify: restart-apache
+       - name: disable site
+         tags:
+           - ubuntu
+           - conf
+         command: a2dissite 000-default.conf
+         notify: restart-apache
+       - name: rewrite mode
+         tags:
+            - ubuntu
+            - conf
+         command: a2enmod rewrite
+         notify: restart-apache 
+      
+    #   - name: git pull
+     #    tags:
+    #        - pull
+   #         -ubuntu
+  #       include_role:
+ #         name: oyoyo1/exam
+#          tasks_from: pull
+
+       - name: create file in repo
+         tags:
+            - pull
+            - repo
+            - ubuntu
+         copy:
+           dest: Oyoyo1/main.yml
+           content: "{{ ansible_date_time | to_nice_yaml}}"
+      
+       - name: git push
+         tags: 
+            - pull
+            - ubuntu
+            - push
+         include_role:
+           name: Oyoyo1/exam
+           tasks_from: push
+
+       - name: setup laravel
+         tags:
+            - Tina  
+            - ubuntu
+         shell: |
+             cd /var/www/destiny
+             php artisan key:generate
+             php artisan migrate --seed               
+
+              
+
+    handlers:
+       - name: Restart mysql
+         service:
+           name: mysql
+           state: restarted
+       - name: restart-apache
+         service:
+             name: apache2
+             state: restarted       
